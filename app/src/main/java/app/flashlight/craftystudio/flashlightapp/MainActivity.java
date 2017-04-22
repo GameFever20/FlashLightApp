@@ -35,7 +35,6 @@ public class MainActivity extends AppCompatActivity {
         hasFlashLight = getApplicationContext().getPackageManager().hasSystemFeature(PackageManager.FEATURE_CAMERA_FLASH);
 
           //cam=Camera.open();
-       //
        //  cam.setParameters(p);
 
         flashlightOn = cam.getParameters().getFlashMode().equals("torch");
