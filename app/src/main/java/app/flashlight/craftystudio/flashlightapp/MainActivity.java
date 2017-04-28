@@ -1,5 +1,6 @@
 package app.flashlight.craftystudio.flashlightapp;
 
+import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.os.Bundle;
 import android.support.design.widget.FloatingActionButton;
@@ -12,13 +13,25 @@ import android.view.Menu;
 import android.view.MenuItem;
 import android.hardware.Camera;
 import android.hardware.Camera.Parameters;
+import android.widget.Button;
 import android.widget.CompoundButton;
 import android.widget.ImageButton;
 import android.widget.Switch;
 import android.widget.Toast;
 
+import android.hardware.Sensor;
+import android.hardware.SensorEvent;
+import android.hardware.SensorEventListener;
+import android.hardware.SensorManager;
+import android.os.Bundle;
+import android.support.v7.app.ActionBarActivity;
+import android.widget.TextView;
+import android.widget.Toast;
 
-public class MainActivity extends AppCompatActivity {
+import java.util.List;
+
+
+public class MainActivity extends AppCompatActivity implements SensorEventListener {
 
     boolean hasFlashLight;
     public static Camera cam = Camera.open();// has to be static, otherwise onDestroy() destroys it
@@ -34,6 +47,19 @@ public class MainActivity extends AppCompatActivity {
     Parameters params;
 
 
+    //sensors declaration
+    int count = 1;
+    private boolean init;
+    private Sensor mAccelerometer;
+    private SensorManager mSensorManager;
+   // private float x1, x2, x3;
+   // private static final float ERROR = (float) 7.0;
+    private TextView counter;
+
+    private float mAccelLast, mAccelCurrent;
+    Button startService;
+
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -44,13 +70,14 @@ public class MainActivity extends AppCompatActivity {
         mySwitch = (Switch) findViewById(R.id.switch1);
         // flash switch button
         btnSwitch = (ImageButton) findViewById(R.id.imagebtntorch);
+        startService=(Button) findViewById(R.id.startService);
 
         hasFlashLight = getApplicationContext().getPackageManager().hasSystemFeature(PackageManager.FEATURE_CAMERA_FLASH);
         // cam=Camera.open();
         //  cam.setParameters(p);
 
 
-        if (camera==null){
+        if (camera == null) {
             getCamera();
         }
 
@@ -63,12 +90,13 @@ public class MainActivity extends AppCompatActivity {
             @Override
             public void onClick(View view) {
 
-
+                stopService(new Intent(getApplicationContext(),MyService.class));
 
 
             }
         });
-         /*
+
+        /*
 
         if (!flashlightOn) {
             mySwitch.setChecked(false);
@@ -112,15 +140,44 @@ public class MainActivity extends AppCompatActivity {
             public void onClick(View v) {
                 if (isFlashOn) {
                     // turn off flash
-                    Log.d("turn off flash","on click"+isFlashOn);
+                    Log.d("turn off flash", "on click" + isFlashOn);
                     turnOffFlash();
                 } else {
                     // turn on flash
-                    Log.d("turn on flash","on click"+isFlashOn);
+                    Log.d("turn on flash", "on click" + isFlashOn);
                     turnOnFlash();
                 }
             }
         });
+
+
+        //sensor coding
+        counter = (TextView) findViewById(R.id.textView_counter);
+        mSensorManager = (SensorManager) getSystemService(SENSOR_SERVICE);
+        List<Sensor> listOfSensorsOnDevice = mSensorManager.getSensorList(Sensor.TYPE_ALL);
+
+        mAccelerometer = mSensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER);
+        mSensorManager.registerListener(this, mAccelerometer, SensorManager.SENSOR_DELAY_NORMAL);
+
+
+        /*
+        for (int i = 0; i < listOfSensorsOnDevice.size(); i++) {
+            if (listOfSensorsOnDevice.get(i).getType() == Sensor.TYPE_ACCELEROMETER) {
+
+                Toast.makeText(this, "ACCELEROMETER sensor is available on device", Toast.LENGTH_SHORT).show();
+
+
+                init = false;
+
+                mAccelerometer = mSensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER);
+                mSensorManager.registerListener(this, mAccelerometer, SensorManager.SENSOR_DELAY_NORMAL);
+
+            } else {
+
+                Toast.makeText(this, "ACCELEROMETER sensor is NOT available on device", Toast.LENGTH_SHORT).show();
+            }
+        }
+        */
 
 
     }
@@ -154,7 +211,7 @@ public class MainActivity extends AppCompatActivity {
             camera.setParameters(params);
             camera.startPreview();
             isFlashOn = true;
-            Log.d("turn on flash","in method"+isFlashOn);
+            Log.d("turn on flash", "in method" + isFlashOn);
 
             // changing button/switch image
             toggleButtonImage();
@@ -177,7 +234,7 @@ public class MainActivity extends AppCompatActivity {
             camera.setParameters(params);
             camera.stopPreview();
             isFlashOn = false;
-            Log.d("turn off flash","in method"+isFlashOn);
+            Log.d("turn off flash", "in method" + isFlashOn);
 
             // changing button/switch image
             toggleButtonImage();
@@ -220,7 +277,6 @@ public class MainActivity extends AppCompatActivity {
     }
 
 
-
     @Override
     protected void onPause() {
 
@@ -260,6 +316,87 @@ public class MainActivity extends AppCompatActivity {
     @Override
     protected void onDestroy() {
         super.onDestroy();
-       finish();
+        finish();
+    }
+
+    @Override
+    public void onSensorChanged(SensorEvent sensorEvent) {
+
+        //Get x,y and z values
+        float x, y, z, mAccel = (float) 0.0;
+        x = sensorEvent.values[0];
+        y = sensorEvent.values[1];
+        z = sensorEvent.values[2];
+
+
+        mAccelLast = mAccelCurrent;
+        mAccelCurrent = (float) Math.sqrt((double) (x * x + y * y + z * z));
+        float delta = mAccelCurrent - mAccelLast;
+        mAccel = mAccel * 0.9f + delta; // perform low-cut filter
+
+        if (mAccel > 12) {
+            Toast.makeText(getApplicationContext(),
+                    "You have shaken your phone", Toast.LENGTH_SHORT).show();
+            counter.setText("Shake Count : " + count);
+            count = count + 1;
+            turnOnFlash();
+        }
+
+
+        /*
+        if (!init) {
+            x1 = x;
+            x2 = y;
+            x3 = z;
+            init = true;
+        } else {
+
+            float diffX = Math.abs(x1 - x);
+            float diffY = Math.abs(x2 - y);
+            float diffZ = Math.abs(x3 - z);
+
+            //Handling ACCELEROMETER Noise
+            if (diffX < ERROR) {
+
+                diffX = (float) 0.0;
+            }
+            if (diffY < ERROR) {
+                diffY = (float) 0.0;
+            }
+            if (diffZ < ERROR) {
+
+                diffZ = (float) 0.0;
+            }
+
+
+            x1 = x;
+            x2 = y;
+            x3 = z;
+
+
+            //Horizontal Shake Detected!
+            if (diffX > diffY) {
+
+                counter.setText("Shake Count : " + count);
+                count = count + 1;
+                Toast.makeText(MainActivity.this, "Shake Detected!", Toast.LENGTH_SHORT).show();
+            }
+
+
+
+
+        }
+
+        */
+    }
+
+    @Override
+    public void onAccuracyChanged(Sensor sensor, int i) {
+
+    }
+
+    public void startService(View view) {
+
+        startService(new Intent(getApplicationContext(),MyService.class));
     }
 }
