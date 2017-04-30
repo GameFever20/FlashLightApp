@@ -1,10 +1,16 @@
 package app.flashlight.craftystudio.flashlightapp;
 
+import android.Manifest;
+import android.app.Dialog;
+import android.content.DialogInterface;
 import android.content.Intent;
 import android.content.pm.PackageManager;
+import android.graphics.drawable.Drawable;
+import android.os.Build;
 import android.os.Bundle;
 import android.support.design.widget.FloatingActionButton;
 import android.support.design.widget.Snackbar;
+import android.support.v7.app.AlertDialog;
 import android.support.v7.app.AppCompatActivity;
 import android.support.v7.widget.Toolbar;
 import android.util.Log;
@@ -16,6 +22,7 @@ import android.hardware.Camera.Parameters;
 import android.widget.Button;
 import android.widget.CompoundButton;
 import android.widget.ImageButton;
+import android.widget.ImageView;
 import android.widget.Switch;
 import android.widget.Toast;
 
@@ -31,20 +38,19 @@ import android.widget.Toast;
 import java.util.List;
 
 
-public class MainActivity extends AppCompatActivity implements SensorEventListener {
+public class MainActivity extends AppCompatActivity {
 
     boolean hasFlashLight;
-    public static Camera cam = Camera.open();// has to be static, otherwise onDestroy() destroys it
+    public static Camera cam;// has to be static, otherwise onDestroy() destroys it
     public static Parameters p;
     boolean flashlightOn;
     Switch mySwitch;
 
-    ImageButton btnSwitch;
+    ImageView btnSwitch;
 
-    private static Camera camera;
+    public static Camera camera;
     private boolean isFlashOn;
-    //  private boolean hasFlash;
-    Parameters params;
+    public static Parameters params;
 
 
     //sensors declaration
@@ -52,13 +58,14 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
     private boolean init;
     private Sensor mAccelerometer;
     private SensorManager mSensorManager;
-   // private float x1, x2, x3;
-   // private static final float ERROR = (float) 7.0;
     private TextView counter;
 
     private float mAccelLast, mAccelCurrent;
     Button startService;
 
+
+    private static final int PERMISSION_REQUEST_CODE = 1;
+    private boolean permissionGranted;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -69,66 +76,28 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
 
         mySwitch = (Switch) findViewById(R.id.switch1);
         // flash switch button
-        btnSwitch = (ImageButton) findViewById(R.id.imagebtntorch);
-        startService=(Button) findViewById(R.id.startService);
+        btnSwitch = (ImageView) findViewById(R.id.imagebtntorch);
+        startService = (Button) findViewById(R.id.startService);
+        counter = (TextView) findViewById(R.id.textView_counter);
 
         hasFlashLight = getApplicationContext().getPackageManager().hasSystemFeature(PackageManager.FEATURE_CAMERA_FLASH);
-        // cam=Camera.open();
-        //  cam.setParameters(p);
 
-
-        if (camera == null) {
-            getCamera();
-        }
-
-        isFlashOn = camera.getParameters().getFlashMode().equals("torch");
-        toggleButtonImage();
-
+        //calling for permission
+        checkForGivenPermission();
 
         final FloatingActionButton fab = (FloatingActionButton) findViewById(R.id.fab);
         fab.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View view) {
 
-                stopService(new Intent(getApplicationContext(),MyService.class));
+                stopService(new Intent(getApplicationContext(), MyService.class));
 
 
             }
         });
 
-        /*
-
-        if (!flashlightOn) {
-            mySwitch.setChecked(false);
-        } else {
-            mySwitch.setChecked(true);
-        }
 
 
-
-        mySwitch.setOnCheckedChangeListener(new CompoundButton.OnCheckedChangeListener() {
-            @Override
-            public void onCheckedChanged(CompoundButton compoundButton, boolean b) {
-                if (mySwitch.isChecked()) {
-                    if (hasFlashLight) {
-                        flashLightOn();
-                    } else {
-                        Toast.makeText(MainActivity.this, "Sorry.. You don't have flashlight", Toast.LENGTH_SHORT).show();
-                    }
-
-                    Toast.makeText(MainActivity.this, "Switch is currently ON", Toast.LENGTH_SHORT).show();
-                } else {
-                    if (hasFlashLight) {
-                        flashLightOff();
-                    } else {
-                        Toast.makeText(MainActivity.this, "Sorry.. You don't have flashlight", Toast.LENGTH_SHORT).show();
-                    }
-                    Toast.makeText(MainActivity.this, "Switch is currently OFF", Toast.LENGTH_SHORT).show();
-
-                }
-            }
-        });
-        */
 
 
 		/*
@@ -138,46 +107,109 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
 
             @Override
             public void onClick(View v) {
-                if (isFlashOn) {
-                    // turn off flash
-                    Log.d("turn off flash", "on click" + isFlashOn);
-                    turnOffFlash();
+
+
+                if (permissionGranted == true) {
+                    if (isFlashOn) {
+                        // turn off flash
+                        Log.d("turn off flash", "on click" + isFlashOn);
+                        turnOffFlash();
+                    } else {
+                        // turn on flash
+                        Log.d("turn on flash", "on click" + isFlashOn);
+                        turnOnFlash();
+                    }
                 } else {
-                    // turn on flash
-                    Log.d("turn on flash", "on click" + isFlashOn);
-                    turnOnFlash();
+                    Toast.makeText(MainActivity.this, "Permission denied", Toast.LENGTH_SHORT).show();
+                    openDialog();
                 }
+
+
             }
         });
 
 
-        //sensor coding
-        counter = (TextView) findViewById(R.id.textView_counter);
-        mSensorManager = (SensorManager) getSystemService(SENSOR_SERVICE);
-        List<Sensor> listOfSensorsOnDevice = mSensorManager.getSensorList(Sensor.TYPE_ALL);
+    }
 
-        mAccelerometer = mSensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER);
-        mSensorManager.registerListener(this, mAccelerometer, SensorManager.SENSOR_DELAY_NORMAL);
+    private void openDialog() {
+        new AlertDialog.Builder(this)
+                .setTitle("Request Permission")
+                .setMessage("do you want to request for permission? ")
+                .setPositiveButton(android.R.string.yes, new DialogInterface.OnClickListener() {
+                    public void onClick(DialogInterface dialog, int which) {
+                        checkForGivenPermission();
+                    }
+                })
+                .setNegativeButton(android.R.string.no, new DialogInterface.OnClickListener() {
+                    public void onClick(DialogInterface dialog, int which) {
+                        // do nothing
+                    }
+                })
+                .setIcon(android.R.drawable.ic_dialog_alert)
+                .show();
 
+    }
 
-        /*
-        for (int i = 0; i < listOfSensorsOnDevice.size(); i++) {
-            if (listOfSensorsOnDevice.get(i).getType() == Sensor.TYPE_ACCELEROMETER) {
+    @Override
+    public void onRequestPermissionsResult(int requestCode,
+                                           String permissions[], int[] grantResults) {
+        switch (requestCode) {
+            case PERMISSION_REQUEST_CODE: {
 
-                Toast.makeText(this, "ACCELEROMETER sensor is available on device", Toast.LENGTH_SHORT).show();
+                // If request is cancelled, the result arrays are empty.
+                if (grantResults.length > 0
+                        && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
 
+                    permissionGranted = true;
+                    initialCall();
+                    // permission was granted, yay! Do the
+                    // contacts-related task you need to do.
+                } else {
 
-                init = false;
-
-                mAccelerometer = mSensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER);
-                mSensorManager.registerListener(this, mAccelerometer, SensorManager.SENSOR_DELAY_NORMAL);
-
-            } else {
-
-                Toast.makeText(this, "ACCELEROMETER sensor is NOT available on device", Toast.LENGTH_SHORT).show();
+                    // permission denied, boo! Disable the
+                    // functionality that depends on this permission.
+                    permissionGranted = false;
+                    btnSwitch.setImageResource(R.drawable.btn_switch_off);
+                    Toast.makeText(MainActivity.this, "Permission denied to use camera", Toast.LENGTH_SHORT).show();
+                }
+                return;
             }
+
+            // other 'case' lines to check for other
+            // permissions this app might request
         }
-        */
+    }
+
+
+    public void checkForGivenPermission() {
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            if (checkSelfPermission(Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) {
+                permissionGranted = true;
+                initialCall();
+            } else {
+                requestPermissions(new String[]{Manifest.permission.CAMERA}, PERMISSION_REQUEST_CODE);
+
+            }
+        } else {
+            permissionGranted = true;
+            initialCall();
+        }
+
+    }
+
+    public void initialCall() {
+
+        if (camera == null) {
+            getCamera();
+
+            Toast.makeText(this, "camera is null ", Toast.LENGTH_SHORT).show();
+        }
+        isFlashOn = camera.getParameters().getFlashMode().equals("torch");
+        toggleButtonImage();
+
+        //starting service
+        startService(new Intent(getApplicationContext(), MyService.class));
 
 
     }
@@ -213,6 +245,7 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
             isFlashOn = true;
             Log.d("turn on flash", "in method" + isFlashOn);
 
+            Toast.makeText(this, "Torch on", Toast.LENGTH_SHORT).show();
             // changing button/switch image
             toggleButtonImage();
         }
@@ -235,6 +268,7 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
             camera.stopPreview();
             isFlashOn = false;
             Log.d("turn off flash", "in method" + isFlashOn);
+            Toast.makeText(this, "Torch off", Toast.LENGTH_SHORT).show();
 
             // changing button/switch image
             toggleButtonImage();
@@ -279,9 +313,7 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
 
     @Override
     protected void onPause() {
-
         super.onPause();
-
     }
 
     @Override
@@ -319,84 +351,9 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
         finish();
     }
 
-    @Override
-    public void onSensorChanged(SensorEvent sensorEvent) {
-
-        //Get x,y and z values
-        float x, y, z, mAccel = (float) 0.0;
-        x = sensorEvent.values[0];
-        y = sensorEvent.values[1];
-        z = sensorEvent.values[2];
-
-
-        mAccelLast = mAccelCurrent;
-        mAccelCurrent = (float) Math.sqrt((double) (x * x + y * y + z * z));
-        float delta = mAccelCurrent - mAccelLast;
-        mAccel = mAccel * 0.9f + delta; // perform low-cut filter
-
-        if (mAccel > 12) {
-            Toast.makeText(getApplicationContext(),
-                    "You have shaken your phone", Toast.LENGTH_SHORT).show();
-            counter.setText("Shake Count : " + count);
-            count = count + 1;
-            turnOnFlash();
-        }
-
-
-        /*
-        if (!init) {
-            x1 = x;
-            x2 = y;
-            x3 = z;
-            init = true;
-        } else {
-
-            float diffX = Math.abs(x1 - x);
-            float diffY = Math.abs(x2 - y);
-            float diffZ = Math.abs(x3 - z);
-
-            //Handling ACCELEROMETER Noise
-            if (diffX < ERROR) {
-
-                diffX = (float) 0.0;
-            }
-            if (diffY < ERROR) {
-                diffY = (float) 0.0;
-            }
-            if (diffZ < ERROR) {
-
-                diffZ = (float) 0.0;
-            }
-
-
-            x1 = x;
-            x2 = y;
-            x3 = z;
-
-
-            //Horizontal Shake Detected!
-            if (diffX > diffY) {
-
-                counter.setText("Shake Count : " + count);
-                count = count + 1;
-                Toast.makeText(MainActivity.this, "Shake Detected!", Toast.LENGTH_SHORT).show();
-            }
-
-
-
-
-        }
-
-        */
-    }
-
-    @Override
-    public void onAccuracyChanged(Sensor sensor, int i) {
-
-    }
 
     public void startService(View view) {
 
-        startService(new Intent(getApplicationContext(),MyService.class));
+        startService(new Intent(getApplicationContext(), MyService.class));
     }
 }

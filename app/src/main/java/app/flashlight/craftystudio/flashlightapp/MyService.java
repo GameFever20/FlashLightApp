@@ -6,9 +6,11 @@ import android.hardware.Camera;
 import android.hardware.Sensor;
 import android.hardware.SensorEvent;
 import android.hardware.SensorEventListener;
+import android.hardware.SensorManager;
 import android.os.IBinder;
 import android.support.annotation.Nullable;
 import android.util.Log;
+import android.widget.ImageButton;
 import android.widget.Toast;
 
 /**
@@ -19,8 +21,13 @@ public class MyService extends Service implements SensorEventListener {
 
 
     private float mAccelLast, mAccelCurrent;
-    Camera camera;
-    Camera.Parameters params;
+  //  private static Camera camera;
+  //  Camera.Parameters params;
+
+    private Sensor mGyroscope;
+    private SensorManager mSensorManager;
+
+    boolean flashOn;
 
 
     @Nullable
@@ -33,6 +40,11 @@ public class MyService extends Service implements SensorEventListener {
     public int onStartCommand(Intent intent, int flags, int startId) {
 
         Toast.makeText(this, "Service started", Toast.LENGTH_SHORT).show();
+
+        mSensorManager = (SensorManager) getSystemService(SENSOR_SERVICE);
+        mGyroscope = mSensorManager.getDefaultSensor(Sensor.TYPE_GYROSCOPE);
+        mSensorManager.registerListener(this, mGyroscope, SensorManager.SENSOR_DELAY_NORMAL);
+
         getCamera();
         return START_STICKY;
     }
@@ -40,6 +52,7 @@ public class MyService extends Service implements SensorEventListener {
     @Override
     public void onDestroy() {
         super.onDestroy();
+
         Toast.makeText(this, "Service Stopped", Toast.LENGTH_SHORT).show();
     }
 
@@ -52,23 +65,31 @@ public class MyService extends Service implements SensorEventListener {
         z = sensorEvent.values[2];
 
 
+        /*
         mAccelLast = mAccelCurrent;
         mAccelCurrent = (float) Math.sqrt((double) (x * x + y * y + z * z));
         float delta = mAccelCurrent - mAccelLast;
         mAccel = mAccel * 0.9f + delta; // perform low-cut filter
+        */
 
         Log.d("in service call","sensor changed");
-        if (mAccel > 12) {
-             turnOnFlash();
+        if (z > 8) {
+            if (!flashOn){
+                turnOnFlash();
+
+            }else{
+                turnOffFlash();
+            }
         }
 
 
     }
+
     private void getCamera() {
-        if (camera == null) {
+        if (MainActivity.camera == null) {
             try {
-                camera = Camera.open();
-                params = camera.getParameters();
+                MainActivity.camera = Camera.open();
+                MainActivity.params = MainActivity.camera.getParameters();
             } catch (RuntimeException e) {
                 Log.e("CameraFailed to Open", e.getMessage());
             }
@@ -79,13 +100,29 @@ public class MyService extends Service implements SensorEventListener {
     }
 
     private void turnOnFlash() {
-        params = camera.getParameters();
-        params.setFlashMode(Camera.Parameters.FLASH_MODE_TORCH);
-        camera.setParameters(params);
-        camera.startPreview();
+        MainActivity.params =  MainActivity.camera.getParameters();
+        MainActivity.params.setFlashMode(Camera.Parameters.FLASH_MODE_TORCH);
+        MainActivity.camera.setParameters(MainActivity.params);
+        MainActivity.camera.startPreview();
         Log.d("in service call","torch on");
+        flashOn=true;
 
     }
+
+    private void turnOffFlash() {
+          /*  if (camera == null || params == null) {
+                return;
+            }*/
+
+        MainActivity.params =  MainActivity.camera.getParameters();
+        MainActivity.params.setFlashMode(Camera.Parameters.FLASH_MODE_OFF);
+        MainActivity.camera.setParameters(MainActivity.params);
+        MainActivity.camera.stopPreview();
+        flashOn=false;
+
+    }
+
+
 
     @Override
     public void onAccuracyChanged(Sensor sensor, int i) {
